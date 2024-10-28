@@ -1,6 +1,6 @@
 import os
 import json
-import requests
+from requests import get, exceptions
 import subprocess
 import sys
 from telethon import TelegramClient
@@ -13,7 +13,7 @@ init(autoreset=True)
 # Путь к файлу сессии и конфигурации
 session_name = 'my_userbot'
 config_file = 'config.json'
-repo_url = 'https://github.com/kawasaji/avocado-user-bot/releases/latest'  # Замените на URL вашего репозитория
+repo_url = 'https://github.com/kawasaji/avocado-user-bot/releases'
 
 # Функция для цветного вывода
 def print_color(text, color=Fore.GREEN):
@@ -38,6 +38,80 @@ def request_api_credentials():
     api_hash = input("API_HASH: ")
     return api_id, api_hash
 
+# Функция для выполнения обновления
+def perform_update():
+    try:
+        # Получаем обновления из репозитория
+        subprocess.run(["git", "fetch"], check=True)
+
+        # Получаем список тегов и берем последний тег
+        tags = subprocess.check_output(["git", "tag"]).decode('utf-8').strip().split('\n')
+
+        if tags:
+            latest_release = tags[-1]  # Предполагается, что теги отсортированы по времени
+            print_color(f"Обновление до последнего релиза: {latest_release}", Fore.GREEN)
+
+            # Переключаемся на последний релиз
+            subprocess.run(["git", "checkout", latest_release], check=True)
+            print_color("Код обновлен до последнего релиза!", Fore.GREEN)
+            return True
+        else:
+            print_color("Нет доступных тегов для обновления.", Fore.YELLOW)
+            return False
+    except subprocess.CalledProcessError as e:
+        print_color(f"Ошибка обновления: {e}", Fore.RED)
+        return False
+
+def restart_program():
+    print_color("Перезапуск бота...", Fore.CYAN)
+    os.execv(sys.executable, ['python'] + sys.argv)
+# Проверка на наличие обновлений
+async def check_for_updates() -> object:
+    try:
+        response = get('https://api.github.com/repos/kawasaji/avocado-user-bot/releases')
+        response.raise_for_status()  # Проверяем, не возникла ли ошибка
+        releases = response.json()  # Пробуем распарсить JSON
+
+        if releases:  # Проверяем, есть ли релизы
+            latest_version = releases[0]['tag_name']  # Берем первый релиз как последний
+
+            if config.get('version') != latest_version:
+                print_color(f"Доступна новая версия: {latest_version}", Fore.YELLOW)
+                update = input("Обновить? (y/n): ")
+                if update.lower() == 'y':
+                    # Выполнение обновления
+                    try:
+                        result = subprocess.run(["git", "pull"], check=True)
+                        print_color("Код обновлен успешно!", Fore.GREEN)
+
+                        # Обновление конфигурации и перезапуск
+                        config['version'] = latest_version
+                        save_config(config)
+                        print_color("Обновление завершено. Перезапуск...", Fore.GREEN)
+                        restart_program()
+                    except subprocess.CalledProcessError as e:
+                        print_color(f"Ошибка обновления: {e}", Fore.RED)
+        else:
+            print_color("Нет доступных релизов.", Fore.YELLOW)
+
+    except exceptions.HTTPError as http_err:
+        print_color(f"HTTP ошибка: {http_err}", Fore.RED)
+    except exceptions.RequestException as req_err:
+        print_color(f"Ошибка запроса: {req_err}", Fore.RED)
+    except ValueError as json_err:
+        print_color(f"Ошибка при парсинге JSON: {json_err}", Fore.RED)
+    except Exception as e:
+        print_color(f"Ошибка при проверке обновлений: {e}", Fore.RED)
+
+    except exceptions.HTTPError as http_err:
+        print_color(f"HTTP ошибка: {http_err}", Fore.RED)
+    except exceptions.RequestException as req_err:
+        print_color(f"Ошибка запроса: {req_err}", Fore.RED)
+    except ValueError as json_err:
+        print_color(f"Ошибка при парсинге JSON: {json_err}", Fore.RED)
+    except Exception as e:
+        print_color(f"Ошибка при проверке обновлений: {e}", Fore.RED)
+
 # Загрузка конфигурации
 config = load_config()
 api_id = config.get('api_id')
@@ -54,54 +128,9 @@ if not api_id or not api_hash:
 # Создаем клиент
 client = TelegramClient(session_name, api_id, api_hash)
 
-# Проверка на наличие обновлений
-def check_for_updates():
-    try:
-        response = requests.get(repo_url)
-        response.raise_for_status()  # Проверяем, не возникла ли ошибка
-        print_color("Ответ от API получен:", Fore.CYAN)
-        print_color(response.text, Fore.GREEN)  # Выводим текст ответа для отладки
-        latest_release = response.json()  # Пробуем распарсить JSON
-        latest_version = latest_release['tag_name']
-
-        if config.get('version') != latest_version:
-            print_color(f"Доступна новая версия: {latest_version}", Fore.YELLOW)
-            update = input("Обновить? (y/n): ")
-            if update.lower() == 'y':
-                if perform_update():
-                    config['version'] = latest_version
-                    save_config(config)
-                    print_color("Обновление завершено. Перезапуск...", Fore.GREEN)
-                    restart_program()
-    except requests.exceptions.HTTPError as http_err:
-        print_color(f"HTTP ошибка: {http_err}", Fore.RED)
-    except requests.exceptions.RequestException as req_err:
-        print_color(f"Ошибка запроса: {req_err}", Fore.RED)
-    except ValueError as json_err:
-        print_color(f"Ошибка при парсинге JSON: {json_err}", Fore.RED)
-    except Exception as e:
-        print_color(f"Ошибка при проверке обновлений: {e}", Fore.RED)
-
-
-# Функция для выполнения обновления
-def perform_update():
-    try:
-        result = subprocess.run(["git", "pull"], check=True)
-        print_color("Код обновлен успешно!", Fore.GREEN)
-        return result.returncode == 0
-    except subprocess.CalledProcessError as e:
-        print_color(f"Ошибка обновления: {e}", Fore.RED)
-        return False
-
-# Функция для перезапуска программы
-def restart_program():
-    print_color("Перезапуск бота...", Fore.CYAN)
-    os.execv(sys.executable, ['python'] + sys.argv)
+# Остальная часть вашего кода...
 
 async def main():
-    print_color("Запуск Telegram user бота...", Fore.CYAN)
-
-    # Подключение и обработка ошибок авторизации
     try:
         await client.connect()
         if not await client.is_user_authorized():
@@ -119,7 +148,7 @@ async def main():
         else:
             print_color("Уже авторизован.", Fore.GREEN)
             # Проверка обновлений после успешной авторизации
-            check_for_updates()
+            await check_for_updates()
 
     except AuthKeyUnregisteredError:
         print_color("Ошибка: Неверные API_ID или API_HASH. Повторите ввод.", Fore.RED)
@@ -135,6 +164,8 @@ async def main():
         me = await client.get_me()
         print_color(f"Привет, {me.first_name}!", Fore.CYAN)
 
-# Запускаем клиент
-with client:
-    client.loop.run_until_complete(main())
+        print_color("Бот запущен", Fore.CYAN)
+
+if __name__ == '__main__':
+    with client:
+        client.loop.run_until_complete(main())
