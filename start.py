@@ -58,11 +58,12 @@ client = TelegramClient(session_name, api_id, api_hash)
 def check_for_updates():
     try:
         response = requests.get(repo_url)
-        response.raise_for_status()
-        latest_release = response.json()
+        response.raise_for_status()  # Проверяем, не возникла ли ошибка
+        print_color("Ответ от API получен:", Fore.CYAN)
+        print_color(response.text, Fore.GREEN)  # Выводим текст ответа для отладки
+        latest_release = response.json()  # Пробуем распарсить JSON
         latest_version = latest_release['tag_name']
 
-        # Проверяем, не обновлен ли уже бот до последней версии
         if config.get('version') != latest_version:
             print_color(f"Доступна новая версия: {latest_version}", Fore.YELLOW)
             update = input("Обновить? (y/n): ")
@@ -72,8 +73,15 @@ def check_for_updates():
                     save_config(config)
                     print_color("Обновление завершено. Перезапуск...", Fore.GREEN)
                     restart_program()
+    except requests.exceptions.HTTPError as http_err:
+        print_color(f"HTTP ошибка: {http_err}", Fore.RED)
+    except requests.exceptions.RequestException as req_err:
+        print_color(f"Ошибка запроса: {req_err}", Fore.RED)
+    except ValueError as json_err:
+        print_color(f"Ошибка при парсинге JSON: {json_err}", Fore.RED)
     except Exception as e:
         print_color(f"Ошибка при проверке обновлений: {e}", Fore.RED)
+
 
 # Функция для выполнения обновления
 def perform_update():
